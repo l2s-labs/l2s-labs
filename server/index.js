@@ -8,11 +8,14 @@ const { URL } = require("url");
 const PORT = Number(process.env.PORT) || 3000;
 const PUBLIC_DIR = path.join(__dirname, "..", "public");
 const SITE_URL = (process.env.SITE_URL || "").replace(/\/$/, "");
-const LEADS_WEBHOOK_URL = process.env.LEADS_WEBHOOK_URL || "";
-const RESEND_API_KEY = process.env.RESEND_API_KEY || "";
-const LEADS_TO_EMAIL = process.env.LEADS_TO_EMAIL || "";
-const LEADS_FROM_EMAIL =
-  process.env.LEADS_FROM_EMAIL || "L2S Labs <onboarding@resend.dev>";
+const LEADS_WEBHOOK_URL = (process.env.LEADS_WEBHOOK_URL || "").trim();
+const RESEND_API_KEY = (process.env.RESEND_API_KEY || "").trim();
+const LEADS_TO_EMAIL = (process.env.LEADS_TO_EMAIL || "").trim();
+const LEADS_FROM_EMAIL = (
+  process.env.LEADS_FROM_EMAIL || "L2S Labs <onboarding@resend.dev>"
+).trim();
+// Se true, falha de webhook/Resend vira 502. Padrão: aceita o lead e registra no log.
+const LEADS_STRICT = /^(1|true|yes)$/i.test(process.env.LEADS_STRICT || "");
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -86,8 +89,8 @@ function isEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
-async function deliverLead(lead) {
-  const lines = [
+function formatLead(lead) {
+  return [
     `Novo lead — L2S Labs`,
     `Nome: ${lead.name}`,
     `E-mail: ${lead.email}`,
@@ -95,47 +98,65 @@ async function deliverLead(lead) {
     `Interesse: ${lead.interest || "—"}`,
     `Mensagem: ${lead.message || "—"}`,
     `Recebido em: ${lead.receivedAt}`,
-  ];
-  const text = lines.join("\n");
+  ].join("\n");
+}
+
+async function deliverViaWebhook(text, lead) {
+  const response = await fetch(LEADS_WEBHOOK_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      content: text.slice(0, 1900),
+      text,
+      lead,
+    }),
+  });
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(`Webhook failed: ${response.status} ${body.slice(0, 300)}`);
+  }
+  return "webhook";
+}
+
+async function deliverViaResend(text, lead) {
+  if (!RESEND_API_KEY || !LEADS_TO_EMAIL) {
+    throw new Error("Resend incompleto: defina RESEND_API_KEY e LEADS_TO_EMAIL");
+  }
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: LEADS_FROM_EMAIL,
+      to: [LEADS_TO_EMAIL],
+      subject: `Lead L2S Labs — ${lead.name}`,
+      text,
+    }),
+  });
+  if (!response.ok) {
+    const errText = await response.text().catch(() => "");
+    throw new Error(`Resend failed: ${response.status} ${errText.slice(0, 400)}`);
+  }
+  return "email";
+}
+
+async function deliverLead(lead) {
+  const text = formatLead(lead);
+  // Sempre espelha no log do Railway (útil se e-mail/webhook falhar)
+  console.log("[lead]", text);
 
   if (LEADS_WEBHOOK_URL) {
-    const response = await fetch(LEADS_WEBHOOK_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        content: text,
-        text,
-        lead,
-      }),
-    });
-    if (!response.ok) {
-      throw new Error(`Webhook failed: ${response.status}`);
-    }
+    await deliverViaWebhook(text, lead);
     return "webhook";
   }
 
-  if (RESEND_API_KEY && LEADS_TO_EMAIL) {
-    const response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${RESEND_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: LEADS_FROM_EMAIL,
-        to: [LEADS_TO_EMAIL],
-        subject: `Lead L2S Labs — ${lead.name}`,
-        text,
-      }),
-    });
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`Resend failed: ${response.status} ${errText}`);
-    }
+  if (RESEND_API_KEY || LEADS_TO_EMAIL) {
+    await deliverViaResend(text, lead);
     return "email";
   }
 
-  console.log("[lead]", text);
   return "log";
 }
 
@@ -209,8 +230,17 @@ async function handleLeads(req, res) {
     const via = await deliverLead(lead);
     sendJson(res, 200, { ok: true, via });
   } catch (err) {
-    console.error("[leads]", err);
-    sendJson(res, 502, { ok: false, error: "Não foi possível enviar. Tente novamente." });
+    console.error("[leads] delivery failed:", err && err.message ? err.message : err);
+    if (LEADS_STRICT) {
+      sendJson(res, 502, {
+        ok: false,
+        error: "Não foi possível enviar. Tente novamente.",
+        detail: String(err && err.message ? err.message : err).slice(0, 200),
+      });
+      return;
+    }
+    // Aceita o lead mesmo se Resend/webhook falhar — fica no log do serviço
+    sendJson(res, 200, { ok: true, via: "log", deliveryError: true });
   }
 }
 
@@ -386,5 +416,10 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`L2S Labs listening on :${PORT}`);
+  const delivery = LEADS_WEBHOOK_URL
+    ? "webhook"
+    : RESEND_API_KEY || LEADS_TO_EMAIL
+      ? "resend"
+      : "log-only";
+  console.log(`L2S Labs listening on :${PORT} (leads: ${delivery}, strict: ${LEADS_STRICT})`);
 });

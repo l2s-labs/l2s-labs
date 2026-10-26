@@ -22,7 +22,10 @@ Configure no Railway (ou `.env` local):
 |----------|-----|
 | `LEADS_WEBHOOK_URL` | POST JSON do lead (Discord/Slack/Make) |
 | `RESEND_API_KEY` + `LEADS_TO_EMAIL` | Envio por e-mail via Resend |
-| `LEADS_FROM_EMAIL` | Remetente (opcional) |
+| `LEADS_FROM_EMAIL` | Remetente (opcional; domínio precisa estar verificado no Resend) |
+| `LEADS_STRICT` | `true` = falha de entrega vira 502 (padrão: aceita e loga) |
+
+Se Resend/webhook falhar, o lead ainda aparece nos **logs do serviço** no Railway.
 
 ## Docker
 
