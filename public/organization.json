@@ -1,0 +1,34 @@
+{
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  "name": "L2S Labs",
+  "legalName": "L2S Tecnologia e Sistemas Inova Simples (I.S.)",
+  "taxID": "69.763.995/0001-49",
+  "description": "De profissionais da saúde para profissionais da saúde. Ecossistemas digitais e gestão inteligente para clínicas, consultórios e profissionais autônomos de saúde e bem-estar.",
+  "slogan": "De profissionais da saúde para profissionais da saúde",
+  "foundingDate": "2026-10-22",
+  "address": {
+    "@type": "PostalAddress",
+    "streetAddress": "Rua Dom Pedro I, 426, Ap 202, Bl 03",
+    "addressLocality": "Resende",
+    "addressRegion": "RJ",
+    "postalCode": "27521-240",
+    "addressCountry": "BR"
+  },
+  "areaServed": {
+    "@type": "Country",
+    "name": "Brazil"
+  },
+  "knowsAbout": [
+    "Saúde digital",
+    "Gestão de clínicas",
+    "Agenda clínica",
+    "Automação de processos em saúde",
+    "Gestão de atendimento",
+    "Software para profissionais da saúde"
+  ],
+  "audience": {
+    "@type": "Audience",
+    "audienceType": "Profissionais da saúde, clínicas e consultórios"
+  }
+}
