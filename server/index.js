@@ -222,7 +222,7 @@ function requestOrigin(req) {
 }
 
 function buildSitemap(origin) {
-  const paths = ["/", "/llms.txt", "/llms-full.txt", "/organization.json"];
+  const paths = ["/", "/llms.txt", "/llms-full.txt", "/organization.json", "/og.jpg"];
   const urls = paths
     .map(
       (p) => `  <url>
